@@ -206,6 +206,10 @@ var MapMarker = React.createClass({
      */
     onDragEnd: PropTypes.func,
 
+    /**
+     * Sets whether this marker should be in front of other markers, currently iOS-only
+     */
+    inFront: PropTypes.bool
   },
 
   showCallout: function() {

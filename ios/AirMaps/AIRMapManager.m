@@ -424,6 +424,20 @@ static int kDragCenterContext;
     }
 }
 
+- (void)mapView:(AIRMap *)mapView didAddAnnotationViews:(nonnull NSArray<MKAnnotationView *> *)views {
+    for(MKAnnotationView *marker in views) {
+
+      if([marker isKindOfClass:[AIRMapMarker class]]) {
+          AIRMapMarker *airMapMarker = (AIRMapMarker *)marker;
+          airMapMarker.layer.zPosition = airMapMarker.inFront ? 100 : 0;
+
+          if(airMapMarker.inFront) {
+              [[airMapMarker superview]bringSubviewToFront:airMapMarker];
+          }
+      }
+    }
+}
+
 - (void)mapView:(AIRMap *)mapView didUpdateUserLocation:(MKUserLocation *)location
 {
     if (mapView.followUserLocation) {
