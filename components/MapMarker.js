@@ -195,6 +195,11 @@ const propTypes = {
    * will want to setState on the marker's coordinate again
    */
   onDragEnd: PropTypes.func,
+
+  /**
+   * Sets whether this marker should be in front of other markers, currently iOS-only
+  */
+  inFront: PropTypes.bool
 };
 
 const defaultProps = {
