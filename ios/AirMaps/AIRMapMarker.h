@@ -40,7 +40,7 @@
 @property (nonatomic, copy) RCTDirectEventBlock onDragStart;
 @property (nonatomic, copy) RCTDirectEventBlock onDrag;
 @property (nonatomic, copy) RCTDirectEventBlock onDragEnd;
-@property BOOL inFront;
+
 
 - (MKAnnotationView *)getAnnotationView;
 - (void)fillCalloutView:(SMCalloutView *)calloutView;
@@ -51,5 +51,5 @@
 @end
 
 
-@interface EmptyCalloutBackgroundView : SMCalloutBackgroundView
+@interface AIREmptyCalloutBackgroundView : SMCalloutBackgroundView
 @end

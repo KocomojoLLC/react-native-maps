@@ -15,7 +15,7 @@
 #import "RCTUtils.h"
 #import "RCTImageLoader.h"
 
-@implementation EmptyCalloutBackgroundView
+@implementation AIREmptyCalloutBackgroundView
 @end
 
 @implementation AIRMapMarker {
@@ -53,7 +53,7 @@
     if ([subview isKindOfClass:[AIRMapCallout class]]) {
         self.calloutView = (AIRMapCallout *)subview;
     } else {
-        [super insertReactSubview:subview atIndex:atIndex];
+        [super insertReactSubview:(UIView *)subview atIndex:atIndex];
     }
 }
 
@@ -61,7 +61,7 @@
     if ([subview isKindOfClass:[AIRMapCallout class]] && self.calloutView == subview) {
         self.calloutView = nil;
     } else {
-        [super removeReactSubview:subview];
+        [super removeReactSubview:(UIView *)subview];
     }
 }
 
@@ -110,7 +110,7 @@
         if (self.calloutView.tooltip) {
             // if tooltip is true, then the user wants their react view to be the "tooltip" as wwell, so we set
             // the background view to something empty/transparent
-            calloutView.backgroundView = [EmptyCalloutBackgroundView new];
+            calloutView.backgroundView = [AIREmptyCalloutBackgroundView new];
         } else {
             // the default tooltip look is wanted, and the user is just filling the content with their react subviews.
             // as a result, we use the default "masked" background view.
@@ -198,7 +198,7 @@
 
 - (BOOL)shouldUsePinView
 {
-    return self.subviews.count == 0 && !self.imageSrc;
+    return self.reactSubviews.count == 0 && !self.imageSrc;
 }
 
 - (void)setImageSrc:(NSString *)imageSrc
@@ -209,20 +209,21 @@
         _reloadImageCancellationBlock();
         _reloadImageCancellationBlock = nil;
     }
-    _reloadImageCancellationBlock = [_bridge.imageLoader loadImageWithTag:_imageSrc
-                                                                     size:self.bounds.size
-                                                                    scale:RCTScreenScale()
-                                                               resizeMode:UIViewContentModeCenter
-                                                            progressBlock:nil
-                                                          completionBlock:^(NSError *error, UIImage *image) {
-                                                              if (error) {
-                                                                  // TODO(lmr): do something with the error?
-                                                                  NSLog(@"%@", error);
-                                                              }
-                                                              dispatch_async(dispatch_get_main_queue(), ^{
-                                                                self.image = image;
-                                                              });
-                                                          }];
+    _reloadImageCancellationBlock = [_bridge.imageLoader loadImageWithURLRequest:[RCTConvert NSURLRequest:_imageSrc]
+                                                                            size:self.bounds.size
+                                                                           scale:RCTScreenScale()
+                                                                         clipped:YES
+                                                                      resizeMode:RCTResizeModeCenter
+                                                                   progressBlock:nil
+                                                                 completionBlock:^(NSError *error, UIImage *image) {
+                                                                     if (error) {
+                                                                         // TODO(lmr): do something with the error?
+                                                                         NSLog(@"%@", error);
+                                                                     }
+                                                                     dispatch_async(dispatch_get_main_queue(), ^{
+                                                                         self.image = image;
+                                                                     });
+                                                                 }];
 }
 
 - (void)setPinColor:(UIColor *)pinColor

@@ -1,8 +1,13 @@
 package com.airbnb.android.react.maps;
 
-import android.app.Activity;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.Point;
+import android.graphics.PorterDuff;
+import android.os.Build;
 import android.os.Handler;
 import android.support.v4.view.GestureDetectorCompat;
 import android.support.v4.view.MotionEventCompat;
@@ -10,8 +15,13 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
+import android.widget.ProgressBar;
+import android.widget.RelativeLayout;
 
 import com.facebook.react.bridge.LifecycleEventListener;
+import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
@@ -25,14 +35,12 @@ import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.Projection;
 import com.google.android.gms.maps.model.CameraPosition;
-import com.google.android.gms.maps.model.Circle;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
-import com.google.android.gms.maps.model.Polygon;
-import com.google.android.gms.maps.model.Polyline;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,33 +50,34 @@ import static android.support.v4.content.PermissionChecker.checkSelfPermission;
 public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
         GoogleMap.OnMarkerDragListener, OnMapReadyCallback {
     public GoogleMap map;
-
+    private ProgressBar mapLoadingProgressBar;
+    private RelativeLayout mapLoadingLayout;
+    private ImageView cacheImageView;
+    private Boolean isMapLoaded = false;
+    private Integer loadingBackgroundColor = null;
+    private Integer loadingIndicatorColor = null;
     private LatLngBounds boundsToMove;
     private boolean showUserLocation = false;
     private boolean isMonitoringRegion = false;
     private boolean isTouchDown = false;
     private boolean handlePanDrag = false;
+    private boolean cacheEnabled = false;
 
     private static final String[] PERMISSIONS = new String[] {
             "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"};
 
     private final List<AirMapFeature> features = new ArrayList<>();
     private final Map<Marker, AirMapMarker> markerMap = new HashMap<>();
-    private final Map<Polyline, AirMapPolyline> polylineMap = new HashMap<>();
-    private final Map<Polygon, AirMapPolygon> polygonMap = new HashMap<>();
-    private final Map<Circle, AirMapCircle> circleMap = new HashMap<>();
-
     private final ScaleGestureDetector scaleDetector;
     private final GestureDetectorCompat gestureDetector;
     private final AirMapManager manager;
     private LifecycleEventListener lifecycleListener;
     private boolean paused = false;
-    private ThemedReactContext context;
+    private final ThemedReactContext context;
+    private final EventDispatcher eventDispatcher;
 
-    final EventDispatcher eventDispatcher;
-
-    public AirMapView(ThemedReactContext context, Activity activity, AirMapManager manager) {
-        super(activity);
+    public AirMapView(ThemedReactContext context, Context appContext, AirMapManager manager) {
+        super(appContext);
         this.manager = manager;
         this.context = context;
 
@@ -79,12 +88,6 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
         final AirMapView view = this;
         scaleDetector =
                 new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-//            @Override
-//            public boolean onScale(ScaleGestureDetector detector) {
-//                Log.d("AirMapView", "onScale");
-//                return false;
-//            }
-
                     @Override
                     public boolean onScaleBegin(ScaleGestureDetector detector) {
                         view.startMonitoringRegion();
@@ -110,6 +113,15 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
                         return false;
                     }
                 });
+
+        this.addOnLayoutChangeListener(new OnLayoutChangeListener() {
+            @Override public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                if (!AirMapView.this.paused) {
+                    AirMapView.this.cacheView();
+                }
+            }
+        });
 
         eventDispatcher = context.getNativeModule(UIManagerModule.class).getEventDispatcher();
     }
@@ -188,6 +200,13 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
                 lastBoundsEmitted = bounds;
                 eventDispatcher.dispatchEvent(new RegionChangeEvent(getId(), bounds, center, isTouchDown));
                 view.stopMonitoringRegion();
+            }
+        });
+
+        map.setOnMapLoadedCallback(new GoogleMap.OnMapLoadedCallback() {
+            @Override public void onMapLoaded() {
+                isMapLoaded = true;
+                AirMapView.this.cacheView();
             }
         });
 
@@ -283,6 +302,70 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
         }
     }
 
+    public void setShowsMyLocationButton(boolean showMyLocationButton) {
+        if (hasPermissions()) {
+            map.getUiSettings().setMyLocationButtonEnabled(showMyLocationButton);
+        }
+    }
+
+    public void setToolbarEnabled(boolean toolbarEnabled) {
+        if (hasPermissions()) {
+            map.getUiSettings().setMapToolbarEnabled(toolbarEnabled);
+        }
+    }
+
+    public void setCacheEnabled(boolean cacheEnabled) {
+        this.cacheEnabled = cacheEnabled;
+        this.cacheView();
+    }
+
+    public void enableMapLoading(boolean loadingEnabled) {
+        if (loadingEnabled && !this.isMapLoaded) {
+            this.getMapLoadingLayoutView().setVisibility(View.VISIBLE);
+        }
+    }
+
+    public void setLoadingBackgroundColor(Integer loadingBackgroundColor) {
+        this.loadingBackgroundColor = loadingBackgroundColor;
+
+        if (this.mapLoadingLayout != null) {
+            if (loadingBackgroundColor == null) {
+                this.mapLoadingLayout.setBackgroundColor(Color.WHITE);
+            } else {
+                this.mapLoadingLayout.setBackgroundColor(this.loadingBackgroundColor);
+            }
+        }
+    }
+
+    public void setLoadingIndicatorColor(Integer loadingIndicatorColor) {
+        this.loadingIndicatorColor = loadingIndicatorColor;
+        if (this.mapLoadingProgressBar != null) {
+            Integer color = loadingIndicatorColor;
+            if (color == null) {
+                color = Color.parseColor("#606060");
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                ColorStateList progressTintList = ColorStateList.valueOf(loadingIndicatorColor);
+                ColorStateList secondaryProgressTintList = ColorStateList.valueOf(loadingIndicatorColor);
+                ColorStateList indeterminateTintList = ColorStateList.valueOf(loadingIndicatorColor);
+
+                this.mapLoadingProgressBar.setProgressTintList(progressTintList);
+                this.mapLoadingProgressBar.setSecondaryProgressTintList(secondaryProgressTintList);
+                this.mapLoadingProgressBar.setIndeterminateTintList(indeterminateTintList);
+            } else {
+                PorterDuff.Mode mode = PorterDuff.Mode.SRC_IN;
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.GINGERBREAD_MR1) {
+                    mode = PorterDuff.Mode.MULTIPLY;
+                }
+                if (this.mapLoadingProgressBar.getIndeterminateDrawable() != null)
+                    this.mapLoadingProgressBar.getIndeterminateDrawable().setColorFilter(color, mode);
+                if (this.mapLoadingProgressBar.getProgressDrawable() != null)
+                    this.mapLoadingProgressBar.getProgressDrawable().setColorFilter(color, mode);
+            }
+        }
+    }
+
     public void setHandlePanDrag(boolean handlePanDrag) {
         this.handlePanDrag = handlePanDrag;
     }
@@ -300,20 +383,14 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
             AirMapPolyline polylineView = (AirMapPolyline) child;
             polylineView.addToMap(map);
             features.add(index, polylineView);
-            Polyline polyline = (Polyline) polylineView.getFeature();
-            polylineMap.put(polyline, polylineView);
         } else if (child instanceof AirMapPolygon) {
             AirMapPolygon polygonView = (AirMapPolygon) child;
             polygonView.addToMap(map);
             features.add(index, polygonView);
-            Polygon polygon = (Polygon) polygonView.getFeature();
-            polygonMap.put(polygon, polygonView);
         } else if (child instanceof AirMapCircle) {
             AirMapCircle circleView = (AirMapCircle) child;
             circleView.addToMap(map);
             features.add(index, circleView);
-            Circle circle = (Circle) circleView.getFeature();
-            circleMap.put(circle, circleView);
         } else {
             // TODO(lmr): throw? User shouldn't be adding non-feature children.
         }
@@ -329,16 +406,8 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
 
     public void removeFeatureAt(int index) {
         AirMapFeature feature = features.remove(index);
-
-
         if (feature instanceof AirMapMarker) {
             markerMap.remove(feature.getFeature());
-        } else if (feature instanceof AirMapPolyline) {
-            polylineMap.remove(feature.getFeature());
-        } else if (feature instanceof AirMapPolygon) {
-            polygonMap.remove(feature.getFeature());
-        } else if (feature instanceof AirMapCircle) {
-            circleMap.remove(feature.getFeature());
         }
         feature.removeFromMap(map);
     }
@@ -393,20 +462,62 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
 
     public void fitToElements(boolean animated) {
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
+
+        boolean addedPosition = false;
+
         for (AirMapFeature feature : features) {
             if (feature instanceof AirMapMarker) {
                 Marker marker = (Marker) feature.getFeature();
                 builder.include(marker.getPosition());
+                addedPosition = true;
             }
             // TODO(lmr): may want to include shapes / etc.
         }
-        LatLngBounds bounds = builder.build();
-        CameraUpdate cu = CameraUpdateFactory.newLatLngBounds(bounds, 50);
-        if (animated) {
-            startMonitoringRegion();
-            map.animateCamera(cu);
-        } else {
-            map.moveCamera(cu);
+
+        if (addedPosition) {
+            LatLngBounds bounds = builder.build();
+            CameraUpdate cu = CameraUpdateFactory.newLatLngBounds(bounds, 50);
+            if (animated) {
+                startMonitoringRegion();
+                map.animateCamera(cu);
+            } else {
+                map.moveCamera(cu);
+            }
+        }
+    }
+
+    public void fitToSuppliedMarkers(ReadableArray markerIDsArray, boolean animated) {
+        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+
+        String[] markerIDs = new String[markerIDsArray.size()];
+        for (int i = 0; i < markerIDsArray.size(); i++) {
+            markerIDs[i] = markerIDsArray.getString(i);
+        }
+
+        boolean addedPosition = false;
+
+        List<String> markerIDList = Arrays.asList(markerIDs);
+
+        for (AirMapFeature feature : features) {
+            if (feature instanceof AirMapMarker) {
+                String identifier = ((AirMapMarker)feature).getIdentifier();
+                Marker marker = (Marker)feature.getFeature();
+                if (markerIDList.contains(identifier)) {
+                    builder.include(marker.getPosition());
+                    addedPosition = true;
+                }
+            }
+        }
+
+        if (addedPosition) {
+            LatLngBounds bounds = builder.build();
+            CameraUpdate cu = CameraUpdateFactory.newLatLngBounds(bounds, 50);
+            if (animated) {
+                startMonitoringRegion();
+                map.animateCamera(cu);
+            } else {
+                map.moveCamera(cu);
+            }
         }
     }
 
@@ -433,16 +544,19 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
 
         switch (action) {
             case (MotionEvent.ACTION_DOWN):
+                this.getParent().requestDisallowInterceptTouchEvent(true);
                 isTouchDown = true;
                 break;
             case (MotionEvent.ACTION_MOVE):
                 startMonitoringRegion();
                 break;
             case (MotionEvent.ACTION_UP):
+                this.getParent().requestDisallowInterceptTouchEvent(false);
                 isTouchDown = false;
                 break;
         }
-        return super.dispatchTouchEvent(ev);
+        super.dispatchTouchEvent(ev);
+        return true;
     }
 
     // Timer Implementation
@@ -507,6 +621,92 @@ public class AirMapView extends MapView implements GoogleMap.InfoWindowAdapter,
         AirMapMarker markerView = markerMap.get(marker);
         event = makeClickEventData(marker.getPosition());
         manager.pushEvent(markerView, "onDragEnd", event);
+    }
+
+    private ProgressBar getMapLoadingProgressBar() {
+        if (this.mapLoadingProgressBar == null) {
+            this.mapLoadingProgressBar = new ProgressBar(getContext());
+            this.mapLoadingProgressBar.setIndeterminate(true);
+        }
+        if (this.loadingIndicatorColor != null) {
+            this.setLoadingIndicatorColor(this.loadingIndicatorColor);
+        }
+        return this.mapLoadingProgressBar;
+    }
+
+    private RelativeLayout getMapLoadingLayoutView() {
+        if (this.mapLoadingLayout == null) {
+            this.mapLoadingLayout = new RelativeLayout(getContext());
+            this.mapLoadingLayout.setBackgroundColor(Color.LTGRAY);
+            this.addView(this.mapLoadingLayout,
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+
+            RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+            params.addRule(RelativeLayout.CENTER_IN_PARENT);
+            this.mapLoadingLayout.addView(this.getMapLoadingProgressBar(), params);
+
+            this.mapLoadingLayout.setVisibility(View.INVISIBLE);
+        }
+        this.setLoadingBackgroundColor(this.loadingBackgroundColor);
+        return this.mapLoadingLayout;
+    }
+
+    private ImageView getCacheImageView() {
+        if (this.cacheImageView == null) {
+            this.cacheImageView = new ImageView(getContext());
+            this.addView(this.cacheImageView,
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            this.cacheImageView.setVisibility(View.INVISIBLE);
+        }
+        return this.cacheImageView;
+    }
+
+    private void removeCacheImageView() {
+        if (this.cacheImageView != null) {
+            ((ViewGroup)this.cacheImageView.getParent()).removeView(this.cacheImageView);
+            this.cacheImageView = null;
+        }
+    }
+
+    private void removeMapLoadingProgressBar() {
+        if (this.mapLoadingProgressBar != null) {
+            ((ViewGroup)this.mapLoadingProgressBar.getParent()).removeView(this.mapLoadingProgressBar);
+            this.mapLoadingProgressBar = null;
+        }
+    }
+
+    private void removeMapLoadingLayoutView() {
+        this.removeMapLoadingProgressBar();
+        if (this.mapLoadingLayout != null) {
+            ((ViewGroup)this.mapLoadingLayout.getParent()).removeView(this.mapLoadingLayout);
+            this.mapLoadingLayout = null;
+        }
+    }
+
+    private void cacheView() {
+        if (this.cacheEnabled) {
+            final ImageView cacheImageView = this.getCacheImageView();
+            final RelativeLayout mapLoadingLayout = this.getMapLoadingLayoutView();
+            cacheImageView.setVisibility(View.INVISIBLE);
+            mapLoadingLayout.setVisibility(View.VISIBLE);
+            if (this.isMapLoaded) {
+                this.map.snapshot(new GoogleMap.SnapshotReadyCallback() {
+                    @Override public void onSnapshotReady(Bitmap bitmap) {
+                        cacheImageView.setImageBitmap(bitmap);
+                        cacheImageView.setVisibility(View.VISIBLE);
+                        mapLoadingLayout.setVisibility(View.INVISIBLE);
+                    }
+                });
+            }
+        }
+        else {
+            this.removeCacheImageView();
+            if (this.isMapLoaded) {
+                this.removeMapLoadingLayoutView();
+            }
+        }
     }
 
     public void onPanDrag(MotionEvent ev) {

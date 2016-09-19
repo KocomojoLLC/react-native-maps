@@ -1,4 +1,4 @@
-# react-native-maps
+# react-native-maps [![npm version](https://img.shields.io/npm/v/react-native-maps.svg?style=flat)](https://www.npmjs.com/package/react-native-maps)
 
 React Native Map components for iOS + Android
 
@@ -356,6 +356,12 @@ render() {
 }
 ```
 
+### Zoom to Specified Markers
+
+Pass an array of marker identifiers to have the map re-focus.
+
+![](http://i.giphy.com/3o7qEbOQnO0yoXqKJ2.gif) ![](http://i.giphy.com/l41YdrQZ7m6Dz4h0c.gif)
+
 ### Troubleshooting
 
 #### My map is blank
@@ -367,11 +373,7 @@ render() {
 ```javascript
 const styles = StyleSheet.create({
   map: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
   },
 });
 ```
@@ -415,7 +417,7 @@ License
      you may not use this file except in compliance with the License.
      You may obtain a copy of the License at
 
-        https://raw.githubusercontent.com/lelandrichardson/react-native-maps/master/LICENSE
+        https://raw.githubusercontent.com/airbnb/react-native-maps/master/LICENSE
 
      Unless required by applicable law or agreed to in writing, software
      distributed under the License is distributed on an "AS IS" BASIS,
