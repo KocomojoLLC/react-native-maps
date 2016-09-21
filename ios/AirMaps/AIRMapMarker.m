@@ -213,6 +213,7 @@
     _reloadImageCancellationBlock = [_bridge.imageLoader loadImageWithURLRequest:[RCTConvert NSURLRequest:_imageSrc]
                                                                      size:self.bounds.size
                                                                     scale:RCTScreenScale()
+                                                                    clipped:YES 
                                                                resizeMode:UIViewContentModeCenter
                                                             progressBlock:nil
                                                           completionBlock:^(NSError *error, UIImage *image) {
