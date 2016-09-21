@@ -14,6 +14,7 @@
 #import "RCTBridge.h"
 #import "RCTUtils.h"
 #import "RCTImageLoader.h"
+#import "RCTConvert.h"
 
 @implementation EmptyCalloutBackgroundView
 @end
@@ -198,7 +199,7 @@
 
 - (BOOL)shouldUsePinView
 {
-    return self.subviews.count == 0 && !self.imageSrc;
+    return self.reactSubviews.count == 0 && !self.imageSrc;
 }
 
 - (void)setImageSrc:(NSString *)imageSrc
@@ -209,7 +210,7 @@
         _reloadImageCancellationBlock();
         _reloadImageCancellationBlock = nil;
     }
-    _reloadImageCancellationBlock = [_bridge.imageLoader loadImageWithTag:_imageSrc
+    _reloadImageCancellationBlock = [_bridge.imageLoader loadImageWithURLRequest:[RCTConvert NSURLRequest:_imageSrc]
                                                                      size:self.bounds.size
                                                                     scale:RCTScreenScale()
                                                                resizeMode:UIViewContentModeCenter
@@ -228,7 +229,7 @@
 - (void)setPinColor:(UIColor *)pinColor
 {
     _pinColor = pinColor;
-    
+
     if ([_pinView respondsToSelector:@selector(setPinTintColor:)]) {
         _pinView.pinTintColor = _pinColor;
     }
